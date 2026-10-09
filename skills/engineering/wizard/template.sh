@@ -88,12 +88,23 @@ confirm() {
   [[ "$reply" =~ ^[Yy] ]]
 }
 
-# _existing KEY: current value of KEY in ENV_FILE, if any, with write_env's quoting undone.
+# _existing KEY: current value of KEY in ENV_FILE, if any, with quoting undone.
+# A single-quoted value is write_env's own form. A double-quoted value is the
+# common dotenv form: its quotes are not part of the value either. The two
+# branches are exclusive, so a single-quoted value that really contains double
+# quotes reads back with those quotes intact. A double-quoted value holding
+# escapes, a $ or an inner quote cannot be decoded safely, so fail instead
+# and let the caller ask again.
 _existing() {
   [[ -f "$ENV_FILE" ]] || return 1
   local line value sq="'\\''"; line=$(grep -E "^${1}=" "$ENV_FILE" | tail -n1) || return 1
   value="${line#*=}"
-  if [[ "$value" == \'*\' ]]; then value="${value:1:${#value}-2}"; value="${value//"$sq"/\'}"; fi
+  if [[ "$value" == \'*\' ]]; then
+    value="${value:1:${#value}-2}"; value="${value//"$sq"/\'}"
+  elif [[ ${#value} -ge 2 && "$value" == \"*\" ]]; then
+    value="${value:1:${#value}-2}"
+    if [[ "$value" == *\\* || "$value" == *'$'* || "$value" == *'"'* ]]; then return 1; fi
+  fi
   printf '%s' "$value"
 }
 
